@@ -1,0 +1,985 @@
+---
+title: "Internship Facebook Project"
+author: "Phi Thai Nhat"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    css: style.css
+    df_print: paged
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE, error=FALSE, fig.cap = " ")
+```
+
+```{css}
+<style type="text/css">
+h4.author { /* Header 4 - and the author and data headers use this too  */
+    font-size: 18px;
+  font-family: "Times New Roman", Times, serif;
+  color: DarkRed;
+  text-align: center;
+}
+h4.author { /* Header 4 - and the author and data headers use this too  */
+    font-size: 18px;
+  font-family: "Times New Roman", Times, serif;
+  color: DarkRed;
+  text-align: center;
+}
+h4.date { /* Header 4 - and the author and data headers use this too  */
+  font-size: 18px;
+  font-family: "Times New Roman", Times, serif;
+  color: Gray;
+  text-align: center;
+}
+
+h1.title {
+  font-size: 38px;
+  color: Gray;
+  text-align: center;
+}
+</style>
+```
+
+```{css}
+/* Whole document: */
+body{
+  font-family: Times New Roman;
+  font-size: 13pt;
+  margin: 100px;
+}
+/* Headers */
+h1{
+  font-size: 20pt;
+  color: navy
+}
+
+h2{
+  font-size: 18pt;
+  color: darkred
+}
+
+h3{
+  font-size: 15pt;
+  color: Gray;
+}
+
+```
+
+
+```{r include = FALSE}
+#Dowwnload Libraries
+library(readxl)
+library(tidyverse) # general utility & workflow functions
+library(tidytext) # tidy implementation of NLP methods
+library(topicmodels) # for LDA topic modelling
+library(tm) # general text mining functions, making document term matrices
+library(SnowballC) # for stemming
+library(dplyr) #for data wrangling
+library(ggplot2)
+library(naniar)
+library(knitr)
+library("gridExtra")
+library(pander)
+```
+
+# I. PROJECT OVERVIEW
+<style>body {text-align: justify}</style>
+
+
+The Facebook Project was given with two data sets: Page Data and Post Data. The data have some trouble that one can not read them straight into R. Instead, the author had to transform the data manually and then read it. For the codes that read the data works smoothly, one can click to download the transformed data.
+
+* [Page Data](https://drive.google.com/drive/folders/1SMgtW8D2G1cZBxcx9EIvmAw4xVQNkEqt?usp=sharing): The information of posts published on Saigon A.I fan page on Facebook platform from February 2019 to July 2022. 
+
+* [Post Data](https://drive.google.com/drive/folders/1TKbd6d8BpnPoJLWy4VWZwMdmFPI60Pjs?usp=sharing): The fluctuation of some metrics of Saigon A.I fan page on Facebook platform from February 2019 to July 2022.
+ 
+The purpose of the project is to consolidate the author’s knowledge during the last three months of learning in the company, mainly focusing on exploratory data analysis. It is anticipated that the outcomes will be data visualizations that offer some insights.
+
+# II. PAGE DATA ANALYSIS
+
+For the Page Data, the author will read it in, check for missing values, subset the data to visualize some key metrics of SAIGON A.I Facebook's fan page.
+
+## 1. Read the data and check for missing values
+
+```{r}
+#Upload data
+page_sheet_1 <- dir("Page_Data", full.names = T) %>% map_df(read_excel)  %>%
+  select("Date", "Lifetime Total Likes",
+         "Daily New Likes","Daily Unlikes",
+         "Daily Page Engaged Users", "Daily Total Reach",
+         "28 Days Organic Reach", "28 Days Viral Reach",
+         "Daily Total Impressions", "Daily Organic impressions", "Daily Viral impressions",
+         "Daily Total Organic Views", "Daily Total Video Views", "Daily Total Organic 30-Second Views",
+         "Daily Logged-in Page Views...32", "Daily Logged-in Page Views...34")
+
+df <- page_sheet_1[-c(which(is.na(page_sheet_1$Date), arr.ind=TRUE)),]
+```
+
+
+```{r, fig.align='center', fig.cap="Page Data's missing values."}
+#Check for missing values
+vis_miss(df)
+```
+
+It can be easily seen that the missing values are more than half of the data frame. With suspicion, the intern double-checked with the transformed data set. It turned out that zero values in the Excel files are converted into NA values in R. So that, the intern replaced all the missing values with “0”.
+
+```{r}
+df <- df %>%
+  mutate_all(funs(ifelse(is.na(.), 0, .)))
+```
+
+
+```{r}
+#Change data into numeric
+df[, 2:15] <- sapply(df[, 2:15], as.numeric)
+```
+
+
+
+```{r}
+
+#Formatting the data column
+library(lubridate)
+#By month
+df_month <- subset(df, Date > "2019-12-31")
+df_month$Date <- ymd(df_month$Date)
+df_month$Date <- format(df_month$Date , "%Y-%m")
+
+#By year
+df_year <- subset(df, Date > "2019-12-31")
+df_year$Date <- ymd(df_year$Date)
+df_year$Date <- format(df_year$Date , "%Y")
+```
+
+## 2.Visualize and interpret the data
+
+### 1.The number of fan page likes and unlikes
+
+```{r}
+#subset the data 
+
+#the data for this part is kinda tricky. the intern want the intervals to be equal.
+df_month2 <- subset(df, Date > "2019-05-31")
+df_month2$Date <- ymd(df_month2$Date)
+df_month2$Date <- format(df_month2$Date , "%Y-%m")
+```
+
+
+```{r}
+Likes <- df_month2 %>%
+  select("Date","Daily New Likes","Daily Unlikes") %>%
+  gather(key = "variable", value = "value", -Date)
+
+Likes$value <- as.numeric(Likes$value)
+Likes <- Likes %>% group_by(Date, variable)  %>%
+                    summarise(value = sum(value),
+                              
+                              .groups = 'drop')
+Likes1 <- Likes[Likes$Date>= "2019-06" &  Likes$Date <= "2020-12", ] %>% mutate(Year = "2019-2020")
+
+Likes1 <- Likes1 %>% group_by(Year, variable)  %>%
+                    summarise(value = sum(value),
+                              
+                              .groups = 'drop')
+
+
+
+Likes2 <- Likes[Likes$Date>= "2021-01" &  Likes$Date <= "2022-07", ] %>% mutate(Year = "2021-2022")
+
+Likes2 <- Likes2 %>% group_by(Year, variable)  %>%
+                    summarise(value = sum(value),
+                              
+                              .groups = 'drop')
+
+Likes3 <- merge(Likes1, Likes2,by=c("Year", "variable", "value"), all = TRUE)
+```
+
+
+```{r, fig.align='center'}
+#plot the data
+ggplot(Likes3,aes(x = Year, y = value,fill = variable)) + 
+  geom_col(position="dodge",
+           col = "black") +
+  geom_text(aes(label = value),
+            size = 5,
+            position = position_dodge(0.9),
+            color="white",
+            vjust = 1.5,
+            hjust = .5) +
+  labs(title = "Fanpage Likes and Unlikes", y= "Counts", x = "Year") +
+  theme_classic() +
+  theme(legend.title = element_blank()) +
+  theme(legend.background = element_rect(fill="white",
+                                         size=0.5,
+                                         linetype="solid",
+                                         colour ="black")) + 
+  theme(legend.position = c(0.15, 0.9)) +
+  theme(axis.title = element_text(face="bold")) +
+  theme(plot.title = element_text(hjust = 0.5, face = "bold")) +
+  scale_fill_manual(name = "",
+                    labels = c("Likes", "Unlikes"),
+                    values=c("#D61C4E", "#293462")) 
+
+
+
+```
+
+The fan page's likes and dislikes for the years 2021–2022 and 2019–2020 were represented by a bar chart. From 2019 to 2020, the number of people who unliked the fan page was bigger than the ones who liked it. In contrast, between 2021 and 2022, the number of likes outweighed the number of unlikes.
+
+It might be a good sign that the fan page's contens are more appealed to the audience. This figure might be connected to the metrics below.
+
+
+### 2. Engagement, Reach, and Frequency
+
+* **Engagement**: Simply put, Facebook engagement is defined as any action that someone takes on one of our posts or comments in pages. This includes any reactions, comments, shares, as well as link clicks.
+* **Reach**: Reach is the number of people who saw any content from your Page or about your Page
+
+
+```{r}
+#ENGAGEMENT
+#subset the data
+engage <- df_month %>% group_by(Date) %>%
+                    summarise(value = sum(`Daily Page Engaged Users`),
+                              .groups = 'drop')
+```
+
+
+```{r}
+#plot the data
+plot_engage <- ggplot(engage,
+       aes(x=Date,
+           y=value,
+           group = 1)) +
+  geom_area(fill="#D61C4E",
+             alpha=0.3) +
+  geom_line(color = "#D61C4E") +
+  scale_x_discrete(guide = guide_axis(check.overlap = TRUE)) +  # check.overlap avoids label overlapping
+  theme_classic() +
+  theme(axis.text.x = element_text(angle = 75, vjust = 1, hjust=1)) + 
+  theme(axis.title = element_text(face="bold")) +
+  labs(title = "Page Engaged Users each month", y= "Number of Users", x = "Month") +
+  theme(plot.title = element_text(hjust = 0.5, face = "bold"))
+```
+
+
+```{r}
+#REACH
+#subset the data
+reach <-  df_month %>% group_by(Date)  %>%
+                    summarise(organic = median(`28 Days Organic Reach`),
+                              viral = median(`28 Days Viral Reach`),
+                              .groups = 'drop')
+```
+
+
+```{r}
+#plot the data
+plot_reach <- ggplot(reach) +
+  geom_area(aes(Date, organic),fill="#293462", alpha=0.3, group = 1) +
+  geom_line(aes(Date, organic, colour = "Organic Reach"), group = 1) +
+  geom_area(aes(Date, viral), fill = "#D61C4E", alpha = 0.3, group = 1) +
+  geom_line(aes(Date, viral, colour = "Viral Reach"), group = 1) +
+  theme_classic() +
+  theme(axis.text.x = element_text(angle = 75, vjust = 1, hjust=1)) + 
+  theme(axis.title = element_text(face="bold"))  +
+  labs(title = "Organic Reach vs Viral Reach", y= "Number of Users", x = "Month") +
+  theme(plot.title = element_text(hjust = 0.5, face = "bold")) +
+  scale_colour_manual("", 
+                      breaks = c("Organic Reach", "Viral Reach"),
+                      values = c("#293462", "#D61C4E")) +
+  theme(legend.title = element_blank()) +
+  theme(legend.background = element_rect(fill="white",
+                                         size=0.5,
+                                         linetype="solid",
+                                         colour ="black")) + 
+  theme(legend.position = c(0.15, 0.9)) +
+  theme(axis.title = element_text(face="bold"))
+```
+
+
+```{r}
+#FREQUENCY
+#download the data
+frequency <- dir("Page_Data", full.names = T) %>% map_df(read_excel, sheet = "28 Days Total frequency dist...")
+frequency$Description <- NULL
+frequency <- na.omit(frequency)
+```
+
+
+```{r}
+frequency$Date <- ymd(frequency$Date)
+frequency$Date <- format(frequency$Date , "%Y-%m")
+```
+
+
+```{r}
+frequency <- subset(frequency, select = -c(Date))
+
+freq <- as.array(round(colMeans(frequency)))
+
+Freq <- as.data.frame.table(freq)
+```
+
+
+```{r}
+#plot the data
+plot_fre <- ggplot(Freq,aes(x=Var1,y=Freq,fill=Freq))+
+  geom_bar(stat = 'identity',color='black')+
+  geom_text(aes(label=Freq),vjust=-0.25,fontface='bold')+
+  labs(title = "Unique Users by Frequency", y= "Numbers of Users", x = "Frequency") +
+  theme_classic() +
+  theme(axis.text = element_text(color='black',face='bold'),
+        axis.title = element_text(color='black',face='bold'),
+        legend.text = element_text(color='black',face='bold'),
+        legend.title = element_text(color='black',face='bold')) +
+   theme(plot.title = element_text(hjust = 0.5,
+                                  face = "bold")) +
+  scale_fill_gradient(low = "#D61C4E",
+                      high = "#293462") +
+  theme(legend.position = c(0.9, 0.5))
+```
+
+
+```{r, fig.align='center'}
+#Arrange the plots
+library(cowplot)
+plot_grid(plot_engage, plot_reach, nrow = 2, rel_heights = c(1/2, 1/2))
+
+```
+
+Overall, there were similar trends of Engagement and Reach in the line graphs above. Both charts indicated that the key metrics of the Facebook fan page only rose after March 2020.
+
+From January 2020 to early 2021, the number of users that the fan page could reach was so low at the bottom. Hence, the Engagement was also not significant. Afterwards, the lines went up and fluctuated, then peaked in July 2020 with more than 2000 reach and 300 engagements from users. Interestingly, the number was only low at the beginning of each year. 
+
+Since the metrics seemed brighter after the early 2020, the more the fan page posts reached  audiences, the more the audiences would interact and found it interesting. Hence, the number of likes of the fan page was increasing significantly.
+
+
+```{r, fig.align='center'}
+plot_fre
+```
+
+* **Frequency**:  The number of people who saw the Page posts, broken down by how many times people saw the posts. The graph above plainly demonstrates that most of the people was only reached once.
+
+### 3. Demographics and Best time to post
+
+
+```{r}
+#By Gender and Age
+#Upload the data
+page_sheet_2 <- dir("Page_Data", full.names = T) %>% map_df(read_excel, sheet = "Lifetime Likes by Gender and...")
+
+demo <- page_sheet_2
+demo <- subset(demo, select = -Description)
+demo[is.na(demo)] = 1
+
+Stats <- summarize_all(demo, mean)
+demographics <- rbind(demo, Stats)
+```
+
+
+```{r}
+#get the proportion of the data
+round_df <- function(df, digits) {
+  nums <- vapply(df, is.numeric, FUN.VALUE = logical(1))
+  df[,nums] <- round(df[,nums], digits = digits)
+  (df)
+}
+demographics <- round_df(demographics, 0)
+demographics <- tail(demographics, n = 1)
+demographics$Date <- NULL
+demographics <- demographics %>% 
+  pivot_longer(cols = everything(),
+               names_to = "Age",
+               values_to = "value",
+               values_drop_na = TRUE)  %>%
+  separate(Age, c('Gender', 'Age'),
+           sep="(?<=[a-zA-Z])\\W*(?=[0-9])") 
+ 
+demographics <- demographics[-14,]
+demographics$value <- round(demographics$value / sum(demographics$value), 3) *100
+
+demographics_gender <- demographics %>% 
+  group_by(Gender) %>%
+  summarise(value = sum(value))
+```
+
+
+```{r, fig.align='center'}
+#plot the data
+demographics$values2 <- round(ifelse(demographics$Gender == "F", -1 * demographics$value, demographics$value), 1)
+
+ggplot(demographics) +
+  geom_bar(aes(Age, values2, fill = Gender),
+           stat = "identity",
+           position = "identity") +
+  geom_label(aes(Age, values2,
+                 label=abs(values2),
+                 fill = Gender),
+             color = "white", size = 2.7,
+             vjust = ifelse(demographics$values2 >= 0, 0, 0.85)) +
+  scale_y_continuous(labels = abs) +
+  labs(title = "", y= "Counts", x = "Year")  + 
+  theme_classic() +
+  theme(legend.title = element_text(face = "bold")) +
+  theme(legend.background = element_rect(fill="white",
+                                         size=0.5,
+                                         linetype="solid",
+                                         colour ="black")) + 
+  theme(legend.position = c(0.9, 0.9)) +
+  theme(axis.title = element_text(face="bold")) +
+  guides(fill = guide_legend(title = "Gender",
+                             override.aes = aes(label = ""))) +
+  labs(title = "Demographics by Gender and Age", y= " % Number of Users", x = "Age") +
+  theme(plot.title = element_text(hjust = 0.5, face = "bold")) +
+  scale_fill_manual(name = "",
+                    labels = c("Female", "Male"),
+                    values=c("#D61C4E", "#293462"))
+
+
+
+
+```
+
+
+There were 1978 fans in total on July 30, 2022. The gender distribution of the fans, which is the key demographic element, reveals that 77% of them are male and only 23% are female. Additionally, the graph below shows that compared to the other age groups, those between the ages of 18 and 24 and 25 and 34 are more inclined to interact with Saigon A.I.'s Facebook fan page. It could be said the fan page was hitting the right spot of the target audience in terms of age. However, with the aim of bringing more women into the industry, the fan page needs putting more efforts.
+
+
+
+```{r}
+#Country
+#Upload the data
+page_sheet_2 <- dir("Page_Data", full.names = T) %>% map_df(read_excel, sheet = "Lifetime Likes By Country")
+demo_country <- page_sheet_2
+
+demo_country <- tail(demo_country, n = 1)  %>%
+  pivot_longer(cols = -c("Date", "Description"), 
+               names_to = "Country",
+               values_to = "value",
+               values_drop_na = TRUE)
+demo1 <- top_n(demo_country,n = 6) %>%
+  arrange(desc(value)) %>%
+  mutate(ID = row_number())
+```
+
+
+```{r, fig.align='center'}
+#plot the data
+library("RColorBrewer")
+ggplot(demo1, aes(x=reorder(Country, value), y=value, fill = Country)) +
+  geom_bar(stat='identity', color = "black") +
+  scale_fill_brewer(palette = "RdBu") +
+  coord_flip() +
+  geom_text(aes(label = value),
+            size = 3,
+            position = position_dodge(0.9),
+            color="black",
+            vjust = 0.5,
+            hjust = -0.1,
+            parse = FALSE) +
+  labs(title = "Demographics by Country", y= "Number of People Liked Page", x = "Country") +
+  theme_classic() +
+  theme(legend.position = "none") +
+   theme(axis.text = element_text(color='black',face='bold'),
+        axis.title = element_text(color='black',face='bold'),
+        legend.text = element_text(color='black',face='bold'),
+        legend.title = element_text(color='black',face='bold')) +
+  theme(plot.title = element_text(hjust = 0.5,
+                                  face = "bold"))
+```
+According to the graph above, it is surprising that most of the users who liked the fan page were not from Vietnam  when the number of users is broken down by the nation where they reside. The majority of individuals that like the Facebook fan page are from several other Asian countries.
+
+```{r}
+#BEST TIME TO POST
+#upload the data
+page_sheet_3 <- dir("Page_Data", full.names = T) %>% map_df(read_excel, sheet = "Daily Liked and Online")
+LikeOnline <- subset(page_sheet_3, Date >= "2022-03-01")
+
+LikeOnline  <- subset(LikeOnline, select = -Description)
+```
+
+
+```{r, results='hide'}
+#check for missing data
+sum(is.na(LikeOnline))
+```
+
+```{r}
+#imputation with mean
+LikeOnline.impute <- LikeOnline %>% 
+  mutate_if(is.numeric, function(x) ifelse(is.na(x), median(x, na.rm = T), x)) %>% 
+   mutate_if(is.numeric, round) #round it up 
+
+LikeOnline.impute <- LikeOnline.impute %>% 
+  pivot_longer(cols = -c("Date"), #pivot exclude the Date column
+               names_to = "Hour",
+               values_to = "value",
+               values_drop_na = TRUE)
+```
+
+
+
+```{r}
+#Change the timezone
+LikeOnline.impute$Hour <- as.numeric(LikeOnline.impute$Hour) + 14
+LikeOnline.impute$Hour <- ifelse(LikeOnline.impute$Hour > 23, LikeOnline.impute$Hour - 24, LikeOnline.impute$Hour)
+```
+
+
+```{r}
+#group data by mean
+LikeOnline <- LikeOnline.impute %>% group_by(Hour)  %>%
+                    summarise(value = round(mean(value)),
+                              .groups = 'drop')
+```
+
+
+```{r, fig.align='center'}
+#plot the data
+ggplot(LikeOnline,aes(x = Hour, y = value)) + 
+  geom_col(position="dodge",
+           col = "black",
+           aes(fill = value)) +
+  geom_text(aes(label = value),
+            size = 2.8,
+            position = position_dodge(0.9),
+            color="white",
+            vjust = 1.5,
+            hjust = .5) +
+  labs(title = "Average number of Users online", y= "Number of Users", x = "Time") +
+  theme_classic() +
+  theme(legend.title = element_blank()) +
+  theme(legend.background = element_rect(fill="white",
+                                         size=0.5,
+                                         linetype="solid",
+                                         colour ="black")) + 
+  theme(legend.position = c(0.15, 0.8)) +
+  theme(axis.title = element_text(face="bold")) +
+  theme(plot.title = element_text(hjust = 0.5,
+                                  face = "bold")) +
+  scale_fill_gradient(low = "#D61C4E",
+                      high = "#293462") +
+  scale_x_continuous(breaks = seq(0, 23, by = 1))
+
+```
+
+
+Some attempts have been done to change the timezone to fit with Vietnam hour in order to be able to plot the chart accurately. From the plot, we can see that the "golden hour" to post is 1 PM and 8 PM since these are the times that have the most users online, which could increase the probability of the fan page's posts reaching their newsfeed.
+
+# III. POST DATA
+
+## 1. Pre-processing
+
+
+```{r}
+#Upload the data
+post_sheet_3 <- dir("Post_Data", full.names = T) %>% map_df(read_excel, sheet = 3) %>%
+  select("Posted","Post Message", "like", "Type")
+
+post_sheet_1 <- dir("Post_Data", full.names = T) %>% map_df(read_excel, sheet = 1) %>%
+  select("Posted","Post Message", "Lifetime Post Total Reach",
+         "Lifetime Post reach by people who like your Page")
+
+post_sheet_1 <- post_sheet_1[-c(which(is.na(post_sheet_1$Posted), arr.ind=TRUE)),]
+
+post_data <- merge(post_sheet_3, post_sheet_1, by = c("Posted", "Post Message"), all = TRUE)
+```
+
+
+```{r}
+#Remove rows with no post message
+post_data <- post_data[-c(which(is.na(post_data$`Post Message`), arr.ind=TRUE)),]
+#Remove rows with meaningless post messages
+post_data <- post_data[- grep("This content", post_data$`Post Message`),]
+post_data <- post_data[- grep("Sài Gòn A.I.", post_data$`Post Message`),]
+```
+
+
+### Checking missing values
+```{r, fig.align='center'}
+#check missing values
+vis_miss(post_data)
+```
+
+```{r}
+#fill NA values with zero
+post_data[is.na(post_data)] = 0
+```
+
+### Punctuation removal and text lowercase.
+
+For example:
+
+*Before*
+```{r}
+post_data$`Post Message`[121]
+```
+
+*After*
+```{r}
+#remove punctuation
+post_data_2 <- post_data
+string = post_data_2$`Post Message`
+string = tolower(string)
+post_data_2$`Post Message` <- str_remove_all(string, "[^[\\da-zA-Z ]]")
+post_data_2$`Post Message`[121]
+```
+
+
+```{r}
+#replace strings
+post_data_2$`Post Message` <- str_replace_all(post_data_2$`Post Message`, c( "scientist" = " science ", " scientists" = " science "))
+post_data_2$`Post Message` <- str_replace_all(post_data_2$`Post Message`, "ai", "ais ")
+post_data_2$`Post Message` <- str_replace_all(post_data_2$`Post Message`, c( "intern" = " internship "))
+```
+
+
+### Stopwords and non-English words removal
+
+* **Stopwords**: Words that are very commonly used in a language but are not very informative.
+* **Non-English words**: In this data set, it is Vietnamese texts because most of it is just the translation of English content.
+
+
+Continue with the above example, after remove stopwords and non-English words, the text now becomes:
+```{r}
+#remove non-English words and stop words
+# create a document term matrix to clean
+Corpus <- Corpus(VectorSource(post_data_2$`Post Message`)) 
+DTM <- DocumentTermMatrix(Corpus)
+
+# convert the document term matrix to a tidytext corpus
+DTM_tidy <- tidy(DTM)
+
+
+library(qdapDictionaries)
+
+#create custom function
+is.word  <- function(x) x %in% c(GradyAugmented, " ai ") # or use any dataset from package
+
+#use this function to filter words, df = dataframe from corpus
+DTM_tidy <- DTM_tidy[which(is.word(DTM_tidy$term)),]
+
+
+# I'm going to add my own custom stop words that I don't think will be very informative in hotel reviews
+custom_stop_words <- tibble(word = c("can", "think", "will","thoughts",
+                                     "agree", "use", "now","know", "make",
+                                     "one", "khi", "sinh", "theo", "lin", "thy",
+                                     "bit","vin", "read", "amazon", "chi", "chia", "pht", "tin", "hin"))
+
+# remove stopwords
+DTM_tidy_cleaned <- DTM_tidy %>% # take our tidy dtm and...
+    anti_join(stop_words, by = c("term" = "word")) %>% # remove English stopwords and...
+    anti_join(custom_stop_words, by = c("term" = "word")) # remove my custom stopwords
+
+# reconstruct cleaned documents (so that each word shows up the correct number of times)
+cleaned_stopwords_documents <- DTM_tidy_cleaned %>%
+    group_by(document) %>% 
+    mutate(terms = toString(rep(term, count))) %>%
+    select(document, terms) %>%
+    unique()
+cleaned_stopwords_documents$terms[118]
+```
+
+
+### Lemmatization and stemming
+
+* **Lemmtization**: considers the context and converts the word to its meaningful base form. For instance, lemmatizing the word "Technologies" would return "Technology."
+
+* **Stemming**: Stemming is a process that stems or removes last few characters from a word, often leading to incorrect meanings and spelling. For instance, stemming the word "Technologies" would return "Technologi."
+
+The aim of this step is to enhance the results of topic modelling by limiting redundancy and miss counts of words, which would affect the probabilities in the LDA.
+
+
+```{r}
+#Lemmatization and stemming
+# stem the words (e.g. convert each word to its stem, where applicable)
+library(textstem)
+DTM_tidy_cleaned_stem <- DTM_tidy_cleaned %>% 
+    mutate(stem = lemmatize_words(term))
+DTM_tidy_cleaned_stem$stem <- stem_words(DTM_tidy_cleaned_stem$stem)
+
+# reconstruct our documents
+cleaned_stemming_documents <- DTM_tidy_cleaned_stem %>%
+    group_by(document) %>% 
+    mutate(terms = toString(rep(stem, count))) %>%
+    select(document, terms) %>%
+    unique()
+cleaned_stemming_documents$terms <- gsub(",", "", cleaned_stemming_documents$terms) #remove the comma 
+```
+
+
+## 2. LDA Topic Modelling
+
+ __Latent Dirichlet Allocation (LDA) Topic Modelling__
+ 
+>**The main principle of LDA is these 2 concepts:**
+>
+>>*Every topic is a mixture of words.*
+>
+>>*Every document is a mixture of topics.*
+
+
+The LDA is a technique developed by David Blei, Andrew Ng, and Michael Jordan and exposed in Blei et al. (2003). The LDA is a generative model, but in text mining, it introduces a way to attach topical content to text documents. LDA represents documents as mixtures of topics that spit out words with certain probabilities. It assumes that documents are produced in the following fashion: when writing each document, one
+
+* Decide on the number of words N the document will have.
+* Choose a topic mixture for the document (according to a Dirichlet distribution over a fixed set of K topics). 
+* Generate each word w_i in the document by:
+  + First picking a topic.
+  + Using the topic to generate the word itself (according to the topic’s multinomial distribution).
+ 
+Assuming this generative model for a collection of documents, LDA then tries to backtrack from the documents to find a set of topics that are likely to have generated the collection.
+
+The mathematics behind the LDA is beyond the scope of this work, however, if one wants to know deeper about LDA. This is the original paper: [Link](https://www.jmlr.org/papers/volume3/blei03a/blei03a.pdf)
+
+
+```{r}
+# create a corpus (type of object expected by tm) and document term matrix
+Corpus <- Corpus(VectorSource(cleaned_stemming_documents$terms)) # make a corpus object
+DTM <- DocumentTermMatrix(Corpus) # get the count of words/document
+
+# remove any empty rows in our document term matrix (if there are any 
+# we'll get an error when we try to run our LDA)
+unique_indexes <- unique(DTM$i) # get the index of each unique value
+DTM <- DTM[unique_indexes,] # get a subset of only those indexes
+
+# perform LDA model
+lda <- LDA(DTM, k = 5, control = list(seed = 1234)) # k = number_of_topics
+```
+
+```{r}
+# get the words/topic in a tidy text format
+lda_topics <- tidy(lda, matrix = "beta")
+```
+
+
+
+## 3. Results
+
+### The top 15 terms that are most common within each topic
+```{r, fig.align='center'}
+# Visualize the top 15 terms that are most common within each topic
+topics_top_terms <- lda_topics %>% # take the topics data frame and..
+  group_by(topic) %>% # treat each topic as a different grou
+  slice_max(beta, n = 15) %>% # get the top 10 most informative words
+  ungroup() %>% # ungroup
+  arrange(topic, -beta) # arrange words in descending informativeness
+
+topics_top_terms %>%
+  mutate(term = reorder_within(term, beta, topic)) %>%
+  ggplot(aes(beta, term, fill = factor(topic))) +
+  geom_col(show.legend = FALSE) +
+  facet_wrap(~ topic, scales = "free") +
+  scale_y_reordered()
+```
+
+
+```{r}
+#> Document-topic probabilities. Besides estimating each topic as a mixture of words, LDA also models each document as a mixture of topics.
+# We can examine the per-document-per-topic probabilities, called γ (“gamma”), with the matrix = "gamma" argument to tidy().
+lda_documents <- as.data.frame(lda@gamma) 
+names(lda_documents) <- c(1:5)
+```
+
+
+```{r}
+# show what document belong to which topic with the highest probability   
+toptopics <- as.data.frame(cbind(document = row.names(lda_documents), 
+                                 topic = apply(lda_documents,1,function(x)
+                                   names(lda_documents)[which(x==max(x))])
+                                 )
+                           )
+```
+
+
+```{r}
+# Manipulate and merge all essential data to get desired output with classified topics
+
+# add ID number for each text in the dataframe
+post_data_3 <- post_data[-c(70,101,153,2),] #manually remove post message with all non-English words
+df_add_index <- post_data_3 %>% mutate(id = row_number()) 
+```
+
+
+```{r}
+#final data
+post_data_final <- merge(df_add_index, toptopics, by.x='id', by.y='document')
+```
+
+```{r}
+post_data_final$topic <- str_replace_all(post_data_final$topic,c(
+                                  "1" = "Learning/Sharing",
+                                  "2" = "Technology (A.I.)",
+                                  "3" = "Internship/Career",
+                                  "4" = "Data Science",
+                                  "5" = "Company News"))
+```
+
+
+The main words of topic 1 are “learn,” “machine,” “top,” “company,” “vietnam,” “artificial,” “andrew” and “science,” which seem to be related to the learning of any who are interested in technology. Similarly, topic 2 is about Vietnam technology education with main words are “vietnam,” “technology,” “education.” The main words of Topic 3 are “internship,” “english,” “experience,” which clearly presents the internship in the company. Topic 4 seems to be related with data science since in Vietnam its words are composed of “datum,” “science,” “vietnam.” Topic 5 may be more about news of the company when checking with the post message.
+Hence, the inferred topics are determined as below:
+
+| **Topic** |   **Top 5 terms**   | **Inferred Topic** | 
+|:---:|:----:|:---:|
+| **1** |   *learn, machin, top, compani, andrew*  |  **Learning/Sharing**    |  
+|   **2**    |  *vietnam, technologi, educ, intellig, artifici* |  **Technology (A.I.)**   |  
+| **3** |  *internship, english, experi, python, christma*  |  **Internship/Career**  |  
+| **4** | *datum, vietnam, scienc, educ, technologi* |  **Data Science**  |  
+| **5** | *futur, market, bia, artifici, intellig* |  **Company News**  |  
+
+### Topic, Types, and Like
+```{r}
+post_data_final_2 <- post_data_final %>%
+   separate("Posted", c("Date", "C"), sep = "T") %>%
+              select("Date", "Post Message", "topic", "like", "Type") 
+
+post_data_final_2$Date <- ymd(post_data_final_2$Date)
+post_data_final_2$Date <- format(post_data_final_2$Date , "%Y-%m")
+```
+
+
+```{r}
+df_topic = post_data_final_2 %>% group_by(topic)  %>%
+                    summarise(likes = sum(like),
+                              posts = length(`Post Message`),
+                              
+                              .groups = 'drop')
+ 
+```
+
+The grouped bar graph below displayed the total number of posts and likes for each topic. When there were few posts and the total likes were frequently over 100, it was clear that the majority of themes were doing well.
+
+```{r, fig.align='center'}
+DFlong <- df_topic %>% pivot_longer(cols = -topic,names_to = "Type") %>% 
+  mutate(scaled_value=ifelse(Type== df_topic$likes,value,value))
+
+ggplot(DFlong,aes(x=topic, y = scaled_value,fill= Type)) + 
+  geom_col(position="dodge", col = "black") +
+  geom_text(aes(label = value),
+            size = 4,
+            position = position_dodge(0.9),
+            color="black",vjust = -0.5,hjust = 0.5)+
+  
+  labs(title = "", y= "Counts", x = "Topics") +
+  theme_classic() +
+   theme(legend.title = element_blank()) +
+  theme(legend.background = element_rect(fill="white",
+                                  size=0.5, linetype="solid", 
+                                  colour ="black")) + 
+  theme(legend.position = c(0.1, 0.9)) +  theme(axis.title = element_text(face="bold")) +
+ ggtitle("Total of likes and total of posts for each topic") +
+  theme(plot.title = element_text(hjust = 0.5, face = "bold")) +
+  scale_fill_manual(name = "",
+                    labels = c("Likes", "Topics"),
+                    values=c("#D61C4E", "#293462")) 
+```
+
+
+With 203 likes after only ten posts, "Internship/Career" stood out as the most popular of those topics. Technology, which has 72 likes spread across 77 posts, is the topic that is least impressive at attracting followers.
+
+
+```{r}
+post_data_final_2$Type[c(132,142)] <- "Other"
+post_data_final_2$Type[c(42,63,94)] <- "Link"
+Type_1 <- post_data_final_2 %>%
+  count(Type) %>%
+  group_by(Type)
+Type_1$percentage <- 100*(Type_1$n/sum(Type_1$n))
+
+plot_type_1 <- Type_1  %>%  
+  ggplot(aes(x = "", y = percentage, fill = Type)) + 
+  geom_col(width = .25) + 
+  #scale_fill_manual(values = c("black", "#039dfc", "yellow", "red", "blue")) +
+  labs(title = "Percentage of content types", y= "Percentage", x = "") +
+   theme_classic() +
+  theme(axis.text = element_text(color='black',face='bold'),
+        axis.title = element_text(color='black',face='bold'),
+        legend.text = element_text(color='black',face='bold'),
+        legend.title = element_text(color='black',face='bold')) +
+   theme(plot.title = element_text(hjust = 0.5,
+                                  face = "bold")) +
+  coord_flip()     
+
+```
+
+```{r}
+post_data_4 <- post_data_final_2
+plot_type_2 <- post_data_4 %>%
+  count(topic, Type) %>%       
+  group_by(topic) %>%
+  mutate(pct= prop.table(n) * 100) %>%
+  ggplot() + aes(topic, pct, fill=Type) +
+  geom_bar(stat="identity") +
+  ylab("Percent") +
+  geom_text(aes(label=paste0(sprintf("%1.1f", pct),"%")),
+            position=position_stack(vjust=0.5), size=2) +
+  ggtitle("Percentage of type per topic") +
+  theme_classic() +
+  theme(axis.text = element_text(color='black',face='bold'),
+        axis.title = element_text(color='black',face='bold'),
+        legend.text = element_text(color='black',face='bold'),
+        legend.title = element_text(color='black',face='bold')) +
+   theme(plot.title = element_text(hjust = 0.5,
+                                  face = "bold")) +
+    theme(legend.position = "none")
+```
+
+
+```{r, fig.align='center'}
+plot_grid(plot_type_1, plot_type_2, nrow = 2, rel_heights = c(1/2, 1/2))
+```
+
+
+With a percentage of more than 80%, "link" was the content type that the fan page concentrated on the most. But out of all content types, this one is the least appealing. As can be seen in the graph above, the topic "Technology" had 96% "link," which unintentionally had the fewest interactions despite having the most submissions. And among those topics, "Internship'Career," which only had 40% "link," received the most likes.
+
+
+```{r, fig.align='center'}
+post_data_final$Type[c(132,142)] <- "Other"
+post_data_final$Type[c(42,63,94)] <- "Link"
+model_aov <- aov(like ~ Type + topic + Type*topic,
+                 data = post_data_final)
+O <- summary(model_aov)
+
+
+pander(O, style='rmarkdown')   # style is pipe tables...
+
+
+#aov <- plot(allEffects(model_aov))
+
+
+```
+
+Type has a p-value <0.05 (significant), indicating that varied levels of Types are associated with varying numbers of likes.
+
+The topic p-value <0.05 (significant), indicating that different topics are linked with substantial differences in the number of likes.
+
+The interaction between Type and topic has a p-value < 0.05 (significant), indicating that the connection between topic and likes is influenced by type of the topic.
+
+
+```{r, fig.align='center'}
+library(effects)
+plot(allEffects(model_aov), lines = list(multiline = TRUE), main = "Type*Topic vs Likes")
+```
+
+First, regardless of the post's topic, it is clear that "Link" was the least appealing content category.
+
+Second, with the exception of the topic "Technology," "Photo" performed quite well when combined with other topics.
+
+Third, the phenomena appears in the form of "Video" under the topic of "Internship/Career." The amount of likes was exceptional and far above the rest.
+
+Finally, there were other combinations available to test for improved outcomes.
+
+
+
+
+
+# IV. CONCLUSIONS
+
+With the support of recent content that has been going in the right direction, the main metrics for fan pages are generally increasing. "Photo" and "Video" are the content types that stand out among the rest. In contrast, the fan page should restrict update posts that contain links as this would reduce followers' interest in the fan page.
+
+Except for the topic "Technology," other themes did a decent job of grabbing the audience's interest. The topic "Internship/Career" stands out above the rest, so the fan page could provide more information regarding issues involving internships or careers at the company.
+
+In addition, it is not required but recommended that the fan page should try out other different type and topic combinations to find out if there is any special occurrence emerge.
+
+There also are some limitations in this report: 1) the sample is small and the types of posts are unequal, so that the results may be not representative; 2) the page data in 2019 is missing; 3) some visualizations could have been better. Hence, it is expected to have feed backs and updates from seniors. 
+
+
+
